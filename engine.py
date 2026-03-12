@@ -158,7 +158,7 @@ def expand_to_leaves(stashed, remaining, depth, fanout, config):
     return s, r, actual_depth
 
 
-def backup_leaf_values(values, num_roots, actual_depth, fanout, num_bundles):
+def propagate_leaf_values(values, num_roots, actual_depth, fanout, num_bundles):
     """Propagate leaf values to roots: max over bundles, mean over draws, per level.
 
     values: flat array of length num_roots * (fanout * num_bundles)^actual_depth

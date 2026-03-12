@@ -34,7 +34,7 @@ def _pool_norm(config):
     return np.maximum(np.array(config.init_pool, dtype=np.float32), 1.0)
 
 
-def encode_arrays(stashed, remaining, config):
+def encode_state_arrays(stashed, remaining, config):
     """Encode numpy arrays of states as a normalized float tensor.
 
     stashed, remaining: (N, num_types) int arrays.
@@ -46,7 +46,7 @@ def encode_arrays(stashed, remaining, config):
     return torch.tensor(np.concatenate([s_norm, r_norm], axis=1), dtype=torch.float32)
 
 
-def encode_states_batch(states, config):
+def encode_state_tuples(states, config):
     """Encode list of (stashed, remaining) tuples as a normalized float tensor.
 
     Returns: tensor of shape (len(states), 2 * num_types).
@@ -84,7 +84,7 @@ def make_leaf_fn(model, config):
                 nn_states.append((stashed, remaining))
 
         if nn_states:
-            X = encode_states_batch(nn_states, config)
+            X = encode_state_tuples(nn_states, config)
             with torch.no_grad():
                 preds = model(X).cpu().numpy()
             for j, idx in enumerate(nn_indices):
@@ -113,9 +113,9 @@ def make_heuristic_leaf_fn(config):
     return leaf_fn
 
 
-def nn_get_action(model, transitions, config):
+def greedy_nn_action(model, transitions, config):
     """Pick best action using NN value predictions (no search)."""
-    X = encode_states_batch(transitions, config)
+    X = encode_state_tuples(transitions, config)
     with torch.no_grad():
         values = model(X)
     return values.argmax().item()

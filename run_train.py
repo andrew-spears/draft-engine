@@ -18,7 +18,7 @@ import torch.nn as nn
 from game import GameConfig, play_game
 from engine import Engine
 from model import (ValueNet, make_leaf_fn, make_heuristic_leaf_fn,
-                   save_model, load_model, nn_get_action, encode_arrays)
+                   save_model, load_model, greedy_nn_action, encode_state_arrays)
 
 
 def load_data(paths):
@@ -40,7 +40,7 @@ def load_data(paths):
 
 def train(model, stashed, remaining, values, config, epochs, batch_size, lr):
     """Train model on numpy arrays."""
-    X = encode_arrays(stashed, remaining, config)
+    X = encode_state_arrays(stashed, remaining, config)
     y = torch.tensor(values, dtype=torch.float32)
 
     dataset = torch.utils.data.TensorDataset(X, y)
@@ -75,7 +75,7 @@ def evaluate(config, model, n_games):
 
     search_nn = [play_game(config, engine_nn.get_action) for _ in range(n_games)]
     search_heur = [play_game(config, engine_heur.get_action) for _ in range(n_games)]
-    nn_only = [play_game(config, lambda t: nn_get_action(model, t, config)) for _ in range(n_games)]
+    nn_only = [play_game(config, lambda t: greedy_nn_action(model, t, config)) for _ in range(n_games)]
     random_scores = [play_game(config, lambda t: np.random.randint(len(t))) for _ in range(n_games)]
 
     print(f"\n{'Agent':<25s} {'Mean':>8s} {'Std':>8s} {'Min':>8s} {'Max':>8s}")

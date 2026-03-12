@@ -21,7 +21,7 @@ import time
 import numpy as np
 import torch
 from game import GameConfig, sample_transitions
-from engine import Engine, expand_to_leaves, backup_leaf_values, batch_score_from_table
+from engine import Engine, expand_to_leaves, propagate_leaf_values, batch_score_from_table
 from model import make_leaf_fn, load_model
 
 
@@ -92,7 +92,7 @@ def worker_batched(args):
 
             # Backup: reshape + max/mean -> one value per root
             num_roots = n * B
-            root_vals = backup_leaf_values(leaf_vals, num_roots, actual_depth, fanout, B)
+            root_vals = propagate_leaf_values(leaf_vals, num_roots, actual_depth, fanout, B)
             game_vals = root_vals.reshape(n, B)
 
             # Record all transitions as training data

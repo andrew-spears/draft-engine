@@ -16,7 +16,7 @@ from typing import Callable
 
 # --- Scoring ---
 
-def face_score(type_value, count):
+def pair_quad_score(type_value, count):
     """Default scoring: paired evens good, odds bad.
     type_value is 1-indexed face value."""
     if count == 0:
@@ -37,7 +37,7 @@ class GameConfig:
     draw_size: int = 10                           # goods drawn per round
     num_bundles: int = 5                         # choices per round
     overlap_degree: int = 2                      # bundles each good appears in
-    score_fn: Callable = field(default=face_score)
+    score_fn: Callable = field(default=pair_quad_score)
 
     @property
     def num_rounds(self):
@@ -56,7 +56,7 @@ class GameConfig:
             draw_size=5,
             num_bundles=4,
             overlap_degree=2,
-            score_fn=face_score,
+            score_fn=pair_quad_score,
         )
 
     def make_score_table(self, max_count=None):
