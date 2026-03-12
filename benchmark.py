@@ -1,31 +1,14 @@
 import numpy as np
 import time
-from game import GameConfig, total_score_from_table, sample_transitions
+from game import GameConfig, play_game
 from engine import Engine
 
 config = GameConfig()
-score_table = config.make_score_table()
 
 
-def play_game(eng):
-    stashed, remaining = config.init_stashed, config.init_pool
-    for _ in range(config.num_rounds):
-        transitions, _, _ = sample_transitions(stashed, remaining, config)
-        stashed, remaining = transitions[eng.get_action(transitions)]
-    return total_score_from_table(np.array(stashed, dtype=np.int64), score_table)
-
-
-def play_game_random():
-    stashed, remaining = config.init_stashed, config.init_pool
-    for _ in range(config.num_rounds):
-        transitions, _, _ = sample_transitions(stashed, remaining, config)
-        stashed, remaining = transitions[np.random.randint(len(transitions))]
-    return total_score_from_table(np.array(stashed, dtype=np.int64), score_table)
-
-
-def run_benchmark(name, n, play_fn, eng=None):
+def run_benchmark(name, n, action_fn, eng=None):
     start = time.time()
-    scores = [play_fn() for _ in range(n)]
+    scores = [play_game(config, action_fn) for _ in range(n)]
     elapsed = time.time() - start
 
     nodes = eng.node_count if eng else 0
@@ -45,7 +28,7 @@ def compute_fanout(depth, target_nodes_per_move, num_bundles):
 
 # --- Warmup ---
 print("Warming up numba...", end=" ", flush=True)
-play_game(Engine(1, 5, config))
+play_game(config, Engine(1, 5, config).get_action)
 print("done.\n")
 
 # --- Header ---
@@ -53,10 +36,10 @@ print(f"{'Strategy':>25s}  {'n':>5s}  {'mean':>6s}  {'std':>5s}  {'s/game':>8s} 
 print("-" * 82)
 
 # --- Baselines ---
-run_benchmark("Random", 10000, play_game_random)
+run_benchmark("Random", 10000, lambda t: np.random.randint(len(t)))
 
 eng = Engine(0, 0, config)
-run_benchmark("Heuristic (depth=0)", 1000, lambda: play_game(eng), eng)
+run_benchmark("Heuristic (depth=0)", 1000, eng.get_action, eng)
 
 # --- Constant-compute engine configs ---
 NODES_PER_MOVE = 100000
@@ -64,4 +47,4 @@ print()
 for depth in range(2, 6):
     fanout = compute_fanout(depth, NODES_PER_MOVE, config.num_bundles)
     eng = Engine(depth, fanout, config)
-    run_benchmark(f"d={depth}, f={fanout:>4d}", 50, lambda e=eng: play_game(e), eng)
+    run_benchmark(f"d={depth}, f={fanout:>4d}", 50, eng.get_action, eng)

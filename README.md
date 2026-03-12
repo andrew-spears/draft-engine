@@ -18,23 +18,24 @@ The player's score is determined by the counts of each type they've collected, e
 This is a general framework for a class of problems: you have a shrinking pool of resources, partial information about what's coming, and each turn you make a constrained selection from randomly-presented options. The overlapping bundles create tension — choosing one bundle means forgoing goods that are shared with other bundles. The scoring function (which maps per-type counts to points) encodes what collection patterns are valuable.
 
 By changing `GameConfig`, you can model different knapsack-like scenarios:
+
 - **Set collection**: score rewards completing sets of specific sizes
 - **Majority games**: score rewards having the most of a type
-- **Avoidance games**: some types have negative value, bundles force you to take them alongside good goods
+- **Avoidance games**: some types have negative value, bundles force you to take them alongside valuable types
 - **Threshold games**: goods are worthless until you hit a count, then valuable
 
 ## Configuration
 
 All game parameters live in `GameConfig`:
 
-| Parameter | Description |
-|---|---|
-| `num_types` | Number of distinct good types |
-| `init_pool` | Tuple of initial counts per type |
-| `draw_size` | Goods drawn from pool each round |
-| `num_bundles` | Number of bundles to choose from |
-| `overlap_degree` | How many bundles each drawn good appears in |
-| `score_fn` | `f(type_value, count) -> score` for one type |
+| Parameter        | Description                                  |
+| ---------------- | -------------------------------------------- |
+| `num_types`      | Number of distinct good types                |
+| `init_pool`      | Tuple of initial counts per type             |
+| `draw_size`      | Goods drawn from pool each round             |
+| `num_bundles`    | Number of bundles to choose from             |
+| `overlap_degree` | How many bundles each drawn good appears in  |
+| `score_fn`       | `f(type_value, count) -> score` for one type |
 
 ## Search engine
 

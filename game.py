@@ -25,8 +25,6 @@ def face_score(type_value, count):
         return 2 * type_value
     if count == 4:
         return 8 * type_value
-    if count == 8:
-        return 16 * type_value
     return -type_value * count
 
 
@@ -126,3 +124,51 @@ def sample_transitions(stashed, remaining, config):
         transitions.append((tuple(s), new_remaining))
 
     return transitions, draw, assignments
+
+
+def _format_bundles(draw, assignments, action, config):
+    """Show each bundle as a row, with the chosen one marked."""
+    lines = []
+    for b in range(config.num_bundles):
+        goods = []
+        for j in range(config.draw_size):
+            for r in range(config.overlap_degree):
+                if assignments[j, r] == b:
+                    goods.append(str(draw[j] + 1))
+                    break
+        contents = " ".join(goods) if goods else "(empty)"
+        marker = " >>>" if b == action else ""
+        lines.append(f"           bundle {b}: {contents}{marker}")
+    return "\n".join(lines)
+
+
+def play_game(config, action_fn, verbose=False):
+    """Play one game. action_fn(transitions) -> int index of chosen bundle.
+
+    Returns final score as a float.
+    """
+    score_table = config.make_score_table()
+    stashed = config.init_stashed
+    remaining = config.init_pool
+
+    for round_num in range(config.num_rounds):
+        if sum(remaining) < config.draw_size:
+            break
+        transitions, draw, assignments = sample_transitions(stashed, remaining, config)
+        action = action_fn(transitions)
+        stashed, remaining = transitions[action]
+
+        if verbose:
+            draw_str = " ".join(str(v + 1) for v in draw)
+            stash_str = "  ".join(f"{c:>2}" for c in stashed)
+            remaining_str = "  ".join(f"{c:>2}" for c in remaining)
+            print(f"  Round {round_num+1}: drew [{draw_str}]")
+            print(_format_bundles(draw, assignments, action, config))
+            print(f"  Stash:     [{stash_str}]")
+            print(f"  Remaining: [{remaining_str}]")
+            print()
+
+    score = total_score_from_table(np.array(stashed, dtype=np.int64), score_table)
+    if verbose:
+        print(f"  Score: {score:.0f}")
+    return score

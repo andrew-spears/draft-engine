@@ -3,12 +3,14 @@ Expectimax search engine.
 
 Tree alternates chance nodes (random draw, averaged) and decision nodes
 (pick bundle, maxed). Heuristic at leaves is the current score via lookup table.
+
+Supports pluggable leaf evaluation via `leaf_fn` for batched NN evaluation.
 """
 
 import numpy as np
 import numba
 from numba import int64, float64
-from game import GameConfig, total_score_from_table, generate_assignments
+from game import GameConfig, total_score_from_table, generate_assignments, sample_transitions
 
 
 @numba.jit(nopython=True, cache=True)
@@ -83,8 +85,65 @@ def _search(stashed, remaining, deck_size, depth, fanout,
     return sum_value / fanout, total_nodes
 
 
+def expand_tree(stashed, remaining, depth, fanout, config, score_table):
+    """Expand expectimax tree in Python, collecting leaves for batched evaluation.
+
+    Returns (leaves, backup_fn):
+      - leaves: list of (stashed, remaining, is_terminal) tuples
+      - backup_fn(values): takes a list/array of float values (one per leaf),
+        propagates max-over-bundles then mean-over-fanout back to root, returns scalar.
+    """
+    leaves = []
+
+    def _expand(stashed, remaining, depth):
+        deck_size = sum(remaining)
+        is_terminal = deck_size < config.draw_size
+
+        if depth == 0 or is_terminal:
+            idx = len(leaves)
+            leaves.append((stashed, remaining, is_terminal))
+            return lambda values: values[idx]
+
+        # Chance node: sample `fanout` draws, average results
+        sample_backups = []
+        for _ in range(fanout):
+            transitions, _, _ = sample_transitions(stashed, remaining, config)
+
+            # Decision node: max over bundles
+            bundle_backups = []
+            for s, r in transitions:
+                bundle_backups.append(_expand(s, r, depth - 1))
+
+            # Capture bundle_backups in closure
+            def _max_backup(values, _bbs=bundle_backups):
+                best = -1e9
+                for bb in _bbs:
+                    v = bb(values)
+                    if v > best:
+                        best = v
+                return best
+
+            sample_backups.append(_max_backup)
+
+        def _mean_backup(values, _sbs=sample_backups):
+            total = 0.0
+            for sb in _sbs:
+                total += sb(values)
+            return total / len(_sbs)
+
+        return _mean_backup
+
+    backup_fn = _expand(stashed, remaining, depth)
+    return leaves, backup_fn
+
+
 class Engine:
-    def __init__(self, depth, fanout, config=None):
+    def __init__(self, depth, fanout, config=None, leaf_fn=None):
+        """
+        leaf_fn: optional callable that takes a list of (stashed, remaining, is_terminal)
+                 tuples and returns a list of float values. If provided, uses
+                 expand_tree + leaf_fn for batched evaluation instead of numba _search.
+        """
         if config is None:
             config = GameConfig()
         self.depth = depth
@@ -92,24 +151,44 @@ class Engine:
         self.config = config
         self.score_table = config.make_score_table()
         self.node_count = 0
+        self.leaf_fn = leaf_fn
 
     def search_value(self, stashed, remaining):
         cfg = self.config
         deck_size = sum(remaining)
-        if self.depth == 0 or deck_size < cfg.draw_size:
-            self.node_count += 1
-            return total_score_from_table(
-                np.array(stashed, dtype=np.int64), self.score_table)
 
-        val, nodes = _search(
-            np.array(stashed, dtype=np.int64),
-            np.array(remaining, dtype=np.int64),
-            deck_size, self.depth, self.fanout,
-            cfg.num_types, cfg.draw_size, cfg.num_bundles,
-            cfg.overlap_degree, self.score_table,
-        )
-        self.node_count += nodes
-        return val
+        if self.leaf_fn is not None:
+            # Batched leaf evaluation path
+            if self.depth == 0 or deck_size < cfg.draw_size:
+                self.node_count += 1
+                # Single leaf — just call leaf_fn directly
+                is_terminal = deck_size < cfg.draw_size
+                values = self.leaf_fn([(stashed, remaining, is_terminal)])
+                return values[0]
+
+            leaves, backup_fn = expand_tree(
+                stashed, remaining, self.depth, self.fanout, cfg, self.score_table
+            )
+            self.node_count += len(leaves)
+            values = self.leaf_fn(leaves)
+            return backup_fn(values)
+        else:
+            # Numba path
+            stashed_arr = np.array(stashed, dtype=np.int64)
+            remaining_arr = np.array(remaining, dtype=np.int64)
+
+            if self.depth == 0 or deck_size < cfg.draw_size:
+                self.node_count += 1
+                return total_score_from_table(stashed_arr, self.score_table)
+
+            val, nodes = _search(
+                stashed_arr, remaining_arr,
+                deck_size, self.depth, self.fanout,
+                cfg.num_types, cfg.draw_size, cfg.num_bundles,
+                cfg.overlap_degree, self.score_table,
+            )
+            self.node_count += nodes
+            return val
 
     def get_action(self, transitions):
         best_action = 0
