@@ -15,20 +15,10 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from game import GameConfig, face_score, play_game
+from game import GameConfig, play_game
 from engine import Engine
-from model import ValueNet, make_leaf_fn, make_heuristic_leaf_fn, save_model, load_model, nn_get_action
-
-
-def make_config():
-    return GameConfig(
-        num_types=5,
-        init_pool=(8, 7, 6, 5, 4),
-        draw_size=5,
-        num_bundles=4,
-        overlap_degree=2,
-        score_fn=face_score,
-    )
+from model import (ValueNet, make_leaf_fn, make_heuristic_leaf_fn,
+                   save_model, load_model, nn_get_action, encode_arrays)
 
 
 def load_data(paths):
@@ -50,11 +40,7 @@ def load_data(paths):
 
 def train(model, stashed, remaining, values, config, epochs, batch_size, lr):
     """Train model on numpy arrays."""
-    pool = np.array(config.init_pool, dtype=np.float32)
-    pool = np.maximum(pool, 1.0)
-    s_norm = stashed.astype(np.float32) / pool
-    r_norm = remaining.astype(np.float32) / pool
-    X = torch.tensor(np.concatenate([s_norm, r_norm], axis=1), dtype=torch.float32)
+    X = encode_arrays(stashed, remaining, config)
     y = torch.tensor(values, dtype=torch.float32)
 
     dataset = torch.utils.data.TensorDataset(X, y)
@@ -116,7 +102,7 @@ def main():
     p.add_argument("--output", type=str, default="value_net.pt")
     args = p.parse_args()
 
-    config = make_config()
+    config = GameConfig.small()
 
     print("Loading data:")
     stashed, remaining, values = load_data(args.data)

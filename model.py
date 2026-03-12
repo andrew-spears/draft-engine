@@ -29,28 +29,29 @@ class ValueNet(nn.Module):
         return self.net(x).squeeze(-1)
 
 
-def encode_state(stashed, remaining, config):
-    """Encode a game state as a normalized float tensor.
+def _pool_norm(config):
+    """Normalization divisor: init_pool clamped to avoid div-by-zero."""
+    return np.maximum(np.array(config.init_pool, dtype=np.float32), 1.0)
 
-    stashed/remaining: tuples of ints, length num_types.
-    Returns: tensor of shape (2 * num_types,).
+
+def encode_arrays(stashed, remaining, config):
+    """Encode numpy arrays of states as a normalized float tensor.
+
+    stashed, remaining: (N, num_types) int arrays.
+    Returns: tensor of shape (N, 2 * num_types).
     """
-    pool = np.array(config.init_pool, dtype=np.float32)
-    # Avoid division by zero for types with 0 in init_pool
-    pool = np.maximum(pool, 1.0)
-    s = np.array(stashed, dtype=np.float32) / pool
-    r = np.array(remaining, dtype=np.float32) / pool
-    return torch.tensor(np.concatenate([s, r]), dtype=torch.float32)
+    pool = _pool_norm(config)
+    s_norm = stashed.astype(np.float32) / pool
+    r_norm = remaining.astype(np.float32) / pool
+    return torch.tensor(np.concatenate([s_norm, r_norm], axis=1), dtype=torch.float32)
 
 
 def encode_states_batch(states, config):
-    """Encode multiple (stashed, remaining) pairs as a batch tensor.
+    """Encode list of (stashed, remaining) tuples as a normalized float tensor.
 
-    states: list of (stashed, remaining) tuples.
     Returns: tensor of shape (len(states), 2 * num_types).
     """
-    pool = np.array(config.init_pool, dtype=np.float32)
-    pool = np.maximum(pool, 1.0)
+    pool = _pool_norm(config)
     rows = []
     for stashed, remaining in states:
         s = np.array(stashed, dtype=np.float32) / pool

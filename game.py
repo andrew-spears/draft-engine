@@ -47,6 +47,18 @@ class GameConfig:
     def init_stashed(self):
         return (0,) * self.num_types
 
+    @staticmethod
+    def small():
+        """Small game config for fast iteration."""
+        return GameConfig(
+            num_types=5,
+            init_pool=(8, 7, 6, 5, 4),
+            draw_size=5,
+            num_bundles=4,
+            overlap_degree=2,
+            score_fn=face_score,
+        )
+
     def make_score_table(self, max_count=None):
         """Build score_table[type_idx, count] as a 2D numpy array.
         type_idx is 0-based; score_fn receives 1-indexed type_value."""

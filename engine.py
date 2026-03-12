@@ -85,6 +85,96 @@ def _search(stashed, remaining, deck_size, depth, fanout,
     return sum_value / fanout, total_nodes
 
 
+# --- Array-based tree expansion (numba) + numpy backup ---
+
+@numba.jit(nopython=True, cache=True)
+def expand_level(stashed, remaining, fanout, num_bundles, draw_size, overlap_degree, num_types):
+    """Expand N states by one tree level (chance + decision) via numba.
+
+    Each state gets `fanout` random draws, each with `num_bundles` bundle choices.
+
+    Input:  stashed (N, num_types), remaining (N, num_types)
+    Output: (N * fanout * num_bundles, num_types) for both stashed and remaining.
+    """
+    N = stashed.shape[0]
+    M = N * fanout * num_bundles
+    out_stashed = np.empty((M, num_types), dtype=int64)
+    out_remaining = np.empty((M, num_types), dtype=int64)
+
+    for n in range(N):
+        deck_size = 0
+        for t in range(num_types):
+            deck_size += remaining[n, t]
+
+        for f in range(fanout):
+            rem = np.empty(num_types, dtype=int64)
+            for t in range(num_types):
+                rem[t] = remaining[n, t]
+            draw = sample_draw(rem, deck_size, draw_size, num_types)
+            assignments = generate_assignments(draw_size, num_bundles, overlap_degree)
+
+            for b in range(num_bundles):
+                idx = (n * fanout + f) * num_bundles + b
+                new_s = _apply_bundle(stashed[n], draw, assignments, b,
+                                      draw_size, overlap_degree, num_types)
+                for t in range(num_types):
+                    out_stashed[idx, t] = new_s[t]
+                    out_remaining[idx, t] = rem[t]
+
+    return out_stashed, out_remaining
+
+
+@numba.jit(nopython=True, cache=True)
+def batch_score_from_table(stashed, score_table):
+    """Score N states using the precomputed score table."""
+    N = stashed.shape[0]
+    num_types = stashed.shape[1]
+    values = np.empty(N, dtype=float64)
+    for n in range(N):
+        total = 0.0
+        for t in range(num_types):
+            total += score_table[t, stashed[n, t]]
+        values[n] = total
+    return values
+
+
+def expand_to_leaves(stashed, remaining, depth, fanout, config):
+    """Expand states through `depth` tree levels via numba.
+
+    All states at a given level have the same remaining total, so terminality
+    is uniform per level. Stops early if leaves become terminal.
+
+    Returns (leaf_stashed, leaf_remaining, actual_depth).
+    """
+    s, r = stashed, remaining
+    actual_depth = 0
+    for d in range(depth):
+        deck_size = int(r[0].sum())
+        if deck_size < config.draw_size:
+            break
+        s, r = expand_level(s, r, fanout, config.num_bundles,
+                            config.draw_size, config.overlap_degree, config.num_types)
+        actual_depth += 1
+    return s, r, actual_depth
+
+
+def backup_leaf_values(values, num_roots, actual_depth, fanout, num_bundles):
+    """Propagate leaf values to roots: max over bundles, mean over draws, per level.
+
+    values: flat array of length num_roots * (fanout * num_bundles)^actual_depth
+    Returns: array of length num_roots.
+    """
+    if actual_depth == 0:
+        return values
+    v = values.reshape(num_roots, *([fanout, num_bundles] * actual_depth))
+    for _ in range(actual_depth):
+        v = v.max(axis=-1)   # decision: max over bundles
+        v = v.mean(axis=-1)  # chance: mean over draws
+    return v
+
+
+# --- Closure-based tree expansion (Python, used by Engine.search_value with leaf_fn) ---
+
 def expand_tree(stashed, remaining, depth, fanout, config, score_table):
     """Expand expectimax tree in Python, collecting leaves for batched evaluation.
 
