@@ -3,7 +3,7 @@
 A configurable engine for solving single-player drafting (e.g. drafting cards/athletes) games using expectimax search.
 =======
 A configurable engine for solving single-player collection/knapsack-style games using expectimax search, with iterative neural network training (Expert Iteration).
->>>>>>> bc5b47f (cleaned up data gen and training loop, mdoels, eval, and more stats)
+
 
 ## The game
 
